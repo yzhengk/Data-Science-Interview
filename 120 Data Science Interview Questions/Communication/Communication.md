@@ -1,4 +1,4 @@
-## Communication (5 questions)
+## Communication (11 questions)
 
 #### 1. Explain to me a technical concept related to the role that you’re interviewing for.
   - AB test, PCA, data science, machine learning, neural networks
