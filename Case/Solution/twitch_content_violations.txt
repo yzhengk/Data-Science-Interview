@@ -1,0 +1,54 @@
+-- #1 - On a monthly basis, how many users publish at least one video that violates all 
+-- three categories - sexual, hateful and spammy?
+
+-- The top-level query applies group by on year, month and counts rows that represent 
+-- instances when users published videos that violated three rules.
+SELECT year, month, COUNT(*)
+FROM (
+	-- The sub-query first filters on videos that violate all categories then removes 
+	-- duplicate user_id's using DISTINCT on year,month,user_id
+	SELECT DISTINCT
+		EXTRACT(YEAR FROM date) AS year, 
+	    EXTRACT(MONTH FROM date) AS month, 
+	    user_id 
+	FROM violations
+	WHERE (sexual + hateful + spam) = 3 
+) t
+GROUP BY year, month;
+
+-- #2 - Currently, the integrity team doesn’t enforce banning a user unless the number of violations exceeds ten. 
+-- A revision is proposed such that a user is banned if the number of violations accumulated exceeds three. 
+-- For each user, return two rows: the date of the first video and date when banned. Additionally, create an 
+-- indicator column that shows status of whether a user signed up "0" or banned "1." The query should return
+-- a table with user_id, status, date. Note that some users are not banned; hence, only one row is returned.
+
+
+-- The first WITH clause calculates the cumulative violations per user across dates.
+WITH cumulative_violation_table AS (
+SELECT user_id,
+               date,
+	SUM(total_violations) OVER (PARTITION BY user_id ORDER BY date, video ASC) AS cumulative_violations
+FROM (
+SELECT user_id,
+	   video,
+	   date,
+	   (sexual + hateful + spam) AS total_violations
+FROM violations ) t1
+),
+-- The second WITH clause takes the sub-query that creates the status indicator below and 
+-- sets the key dates, first and last videos, based on the date of the first video in each 
+-- status per user.
+status_minimum_date AS (
+SELECT user_id, 
+	   status, 
+	   MIN(date) as date
+FROM (
+    -- The subquery creates a status indicator if the user is banned "1" or not "0" on a particular day.
+	SELECT user_id, 
+	 	   date,	
+		   CASE WHEN cumulative_violations <= 3 THEN 0 ELSE  1 END AS status
+FROM cumulative_violation_table ) t
+GROUP BY user_id, status 
+)
+-- Final table that retrieves status and date per user.
+SELECT * FROM status_minimum_date ORDER BY user_id, status;

@@ -1,0 +1,58 @@
+-- #1 Return a list of users who blocked another user after connecting for at least 90 days. 
+-- 	 Show user_id and receiver_id. 
+
+-- Return a pair of users who once connected for at least 90 days then blocked.
+SELECT u.user_id, 
+       o.receiver_id
+FROM
+(
+	-- Before a user can block another user, the users must be connected. Create two
+	-- sub-queries - one with blocked events and another with connected events.
+	-- Use inner join on user_ids and receiver_ids.
+	(SELECT * 
+		FROM connections
+		WHERE action = 'Blocked') u
+	JOIN
+	(SELECT * 
+		FROM connections
+		WHERE action = 'Connected') o
+	ON u.user_id = o.user_id AND u.receiver_id = o.receiver_id
+)
+WHERE (u.dates - o.dates) >= 90;
+
+-- #2 - For each user, what is the proportion of each action? Note that the receiver_id 
+-- can appear in multiple actions per user, only regard the latest action performed 
+-- when calculating the distribution.
+
+-- Assign event order by user_id and receiver_id to filter on the latest event
+WITH friendship_status AS (
+	SELECT *,  
+		   ROW_NUMBER() OVER(PARTITION BY user_id, receiver_id ORDER BY dates DESC) AS event_order
+	FROM connections 
+),  
+-- Filter on the latest event per user_id and receiver_id pair
+latest_friendship_status AS (
+	SELECT *
+	FROM friendship_status
+	WHERE event_order = 1
+),
+-- Create a dummy variable column per action type
+status_dummy_variables AS (
+	SELECT *,
+		   CASE WHEN action = 'Sent' THEN 1 ELSE 0 END AS sent,
+		   CASE WHEN action = 'Received' THEN 1 ELSE 0 END AS received,
+		   CASE WHEN action = 'Connected' THEN 1 ELSE 0 END AS connected,
+		   CASE WHEN action = 'Blocked' THEN 1 ELSE 0 END AS blocked
+	FROM latest_friendship_status
+),
+-- For each action column, divide by event order to get proportion of action types per user.
+distribution AS (
+	SELECT user_id,
+		 	SUM(sent) / SUM(event_order) AS sent,
+		 	SUM(received) / SUM(event_order) AS received,
+		 	SUM(connected) / SUM(event_order) AS connected,
+		 	SUM(blocked) / SUM(event_order) AS blocked
+	FROM status_dummy_variables
+	GROUP BY user_id
+)
+SELECT * FROM distribution;
